@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: asset-auto-picker
-Version: 1.0.0
+Version: 1.1.0
 Summary: Add your description here
 Requires-Python: >=3.11
 Requires-Dist: httpx>=0.28.1

@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+asset_auto_picker/__init__.py
+asset_auto_picker/main.py
+asset_auto_picker.egg-info/PKG-INFO
+asset_auto_picker.egg-info/SOURCES.txt
+asset_auto_picker.egg-info/dependency_links.txt
+asset_auto_picker.egg-info/requires.txt
+asset_auto_picker.egg-info/top_level.txt

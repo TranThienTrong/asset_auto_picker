@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.TranThienTrong/asset_auto_picker",
+  "description": "An MCP server that provides [describe what your server does]",
+  "repository": {
+    "url": "https://github.com/TranThienTrong/asset_auto_picker",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "asset-auto-picker",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

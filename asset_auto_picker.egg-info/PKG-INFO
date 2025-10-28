@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: asset-auto-picker
+Version: 1.0.0
+Summary: Add your description here
+Requires-Python: >=3.11
+Requires-Dist: httpx>=0.28.1
+Requires-Dist: mcp[cli]>=1.19.0
+Requires-Dist: rapidfuzz>=3.14.1
+Requires-Dist: twine>=6.2.0

@@ -20,7 +20,7 @@ from asset_traversal_service import AssetTraversalService
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 # Initialize FastMCP server
-mcp = FastMCP("assetAutoPicker")
+mcp = FastMCP("assetAutoPicker", stateless_http=True)
 
 # Static remote repository configuration
 REMOTE_REPO_URL = "https://github.com/TranThienTrong/vibe-habit-fluentui-emoji.git"

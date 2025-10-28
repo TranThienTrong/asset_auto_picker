@@ -1,9 +1,15 @@
 Metadata-Version: 2.4
 Name: asset-auto-picker
-Version: 1.1.0
-Summary: Add your description here
+Version: 1.2.0
+Summary: The MCP Server use for auto pick file
+Author: STrong
+License: MIT
+Keywords: mcp,model-context-protocol,mcp-name: io.github.TranThienTrong/asset-auto-picker
 Requires-Python: >=3.11
+Description-Content-Type: text/markdown
 Requires-Dist: httpx>=0.28.1
 Requires-Dist: mcp[cli]>=1.19.0
 Requires-Dist: rapidfuzz>=3.14.1
 Requires-Dist: twine>=6.2.0
+
+mcp-name: io.github.TranThienTrong/asset-auto-picker

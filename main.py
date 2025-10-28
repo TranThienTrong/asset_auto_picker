@@ -1,4 +1,7 @@
+import argparse
 from typing import Any
+
+from colorama import Fore, Style
 import httpx
 import asyncio
 import json
@@ -7,6 +10,8 @@ from pathlib import Path
 from typing import Any, Iterable
 import logging
 import urllib.request
+
+import uvicorn
 from mcp.server.fastmcp import FastMCP
 from rapidfuzz import fuzz
 from mcp.server.fastmcp import FastMCP
@@ -393,9 +398,26 @@ async def get_3d_png_asset(
         logger.exception("Unable to download PNG asset from GitHub")
         raise RuntimeError("Failed to download PNG asset") from exc
 
-# def main():
-#     # Initialize and run the server
-#     mcp.run(transport='stdio')
-#
+if __name__ == "__main__":
+    mcp.run(transport="streamable-http")
+
 # if __name__ == "__main__":
-#     main()
+#     # Parse command line arguments
+#     parser = argparse.ArgumentParser(description='Run MCP server')
+#     parser.add_argument('--host', type=str,
+#                         help='Host to bind the server to')
+#     parser.add_argument('--port',
+#                         help='Port to bind the server to')
+#     parser.add_argument('--reload', action='store_true', help='Enable auto-reload')
+#     parser.add_argument('--workers', type=int, default=1, help='Number of worker processes')
+#
+#     args = parser.parse_args()
+#
+#     # Run the server
+#     uvicorn.run(
+#         "main:main",
+#         host=args.host,
+#         port=args.port,
+#         reload=args.reload,
+#         workers=args.workers,
+#     )

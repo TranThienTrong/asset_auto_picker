@@ -9,6 +9,8 @@ authors = [
 ]
 license = { text = "MIT" }
 dependencies = [
+    "colorama>=0.4.6",
+    "fore>=0.1.8",
     "httpx>=0.28.1",
     "mcp[cli]>=1.19.0",
     "rapidfuzz>=3.14.1",

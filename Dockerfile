@@ -1,6 +1,3 @@
-FROM ubuntu:latest
-LABEL authors="trong"
-
 # Use the official Python image with uv pre-installed
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
@@ -18,7 +15,7 @@ WORKDIR /app
 ENV UV_SYSTEM_PYTHON=1
 ENV PATH="/root/.local/bin:$PATH"
 ENV PYTHONPATH="/app"
-ENV PORT=8000
+ENV PORT=8080
 
 # Copy pyproject.toml and uv.lock* first to leverage Docker cache
 COPY pyproject.toml uv.lock* ./
@@ -30,4 +27,4 @@ RUN uv sync --frozen
 COPY . .
 
 # Command to run the uvicorn server
-CMD ["sh", "-c", "uv run main.py"]
+CMD ["sh", "-c", "uv run fastmcp run main.py:mcp --transport http --host 0.0.0.0 --port $PORT"]

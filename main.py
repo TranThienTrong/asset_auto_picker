@@ -1,4 +1,5 @@
 import argparse
+import os
 from typing import Any
 
 from colorama import Fore, Style
@@ -12,9 +13,8 @@ import logging
 import urllib.request
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from rapidfuzz import fuzz
-from mcp.server.fastmcp import FastMCP
 from asset_traversal_service import AssetTraversalService
 
 logger = logging.getLogger(__name__)
@@ -420,3 +420,15 @@ if __name__ == "__main__":
 #         reload=args.reload,
 #         workers=args.workers,
 #     )
+# MCP SERVER STARTUP
+# This section configures and starts the MCP server
+if __name__ == "__main__":
+    # Get port from environment variable (used by deployment platforms like DigitalOcean)
+    port = int(os.environ.get("PORT", 8080))
+
+    # Start the MCP server with HTTP transport
+    # - transport="streamable-http": Uses HTTP for communication with MCP clients
+    # - host="0.0.0.0": Accepts connections from any IP (needed for remote deployment)
+    # - port: The port to listen on
+    # - log_level="debug": Enables detailed logging for development
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=port, log_level="debug")

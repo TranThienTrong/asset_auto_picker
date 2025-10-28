@@ -15,7 +15,6 @@ import uvicorn
 from mcp.server.fastmcp import FastMCP
 from rapidfuzz import fuzz
 from mcp.server.fastmcp import FastMCP
-
 from asset_traversal_service import AssetTraversalService
 
 logger = logging.getLogger(__name__)

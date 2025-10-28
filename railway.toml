@@ -1,0 +1,7 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "FASTMCP_HOST=0.0.0.0 FASTMCP_PORT=$PORT uv run python main.py"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

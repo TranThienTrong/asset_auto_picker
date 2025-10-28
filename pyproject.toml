@@ -1,0 +1,10 @@
+[project]
+name = "asset-auto-picker"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.19.0",
+    "rapidfuzz>=3.14.1",
+]

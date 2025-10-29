@@ -27,7 +27,6 @@ REMOTE_REPO_URL = "https://github.com/TranThienTrong/vibe-habit-fluentui-emoji.g
 REMOTE_BRANCH = "main"
 REMOTE_ASSETS_SUBPATH = "assets"
 
-
 # Local cache of directory names
 CACHED_DIRECTORIES_PATH = Path(__file__).resolve().parent / "cached_file_name.json"
 CACHED_3D_PNG_PATH = Path(__file__).resolve().parent / "cached_3d_png_paths.json"
@@ -101,11 +100,11 @@ async def _gather_directories(service: AssetTraversalService) -> list[str]:
 
 
 def _rank_directories(
-    query: str,
-    directories: Iterable[str],
-    *,
-    limit: int,
-    min_score: float,
+        query: str,
+        directories: Iterable[str],
+        *,
+        limit: int,
+        min_score: float,
 ) -> list[Match]:
     """Return ranked directory matches filtered by score threshold."""
 
@@ -147,9 +146,9 @@ def _find_first_png_local(service: AssetTraversalService, directory: str) -> str
 
 
 def _find_first_png_remote(
-    directory: str,
-    tree: list[dict[str, str]],
-    assets_subpath: str,
+        directory: str,
+        tree: list[dict[str, str]],
+        assets_subpath: str,
 ) -> str | None:
     prefix = f"{assets_subpath}/{directory}/3D/"
 
@@ -166,15 +165,15 @@ def _find_first_png_remote(
 
     first = candidates[0]
     if assets_subpath and first.startswith(f"{assets_subpath}/"):
-        return first[len(assets_subpath) + 1 :]
+        return first[len(assets_subpath) + 1:]
 
     return first
 
 
 def _filter_cached_pngs_by_directories(
-    *,
-    cached_paths: Iterable[str],
-    directories: Iterable[str],
+        *,
+        cached_paths: Iterable[str],
+        directories: Iterable[str],
 ) -> list[str]:
     normalized_dirs = {directory.strip("/") for directory in directories}
 
@@ -204,9 +203,9 @@ def _fetch_github_blob(url: str, github_token: str | None) -> bytes:
 
 @mcp.tool("list_directories")
 async def list_directories(
-    *,
-    assets_root: str | None = None,
-    github_token: str | None = None,
+        *,
+        assets_root: str | None = None,
+        github_token: str | None = None,
 ) -> str:
     """Return newline-separated directories discovered under the assets path."""
 
@@ -234,12 +233,12 @@ async def list_directories(
 
 @mcp.tool("find_directory")
 async def find_directory(
-    query: str,
-    *,
-    limit: int = 10,
-    min_score: float = 60.0,
-    assets_root: str | None = None,
-    github_token: str | None = None,
+        query: str,
+        *,
+        limit: int = 10,
+        min_score: float = 60.0,
+        assets_root: str | None = None,
+        github_token: str | None = None,
 ) -> str:
     """Return newline-separated directory matches with similarity scores."""
 
@@ -277,12 +276,12 @@ async def find_directory(
 
 
 async def get_first_png_in_3d(
-    query: str,
-    *,
-    limit: int = 5,
-    min_score: float = 60.0,
-    assets_root: str | None = None,
-    github_token: str | None = None,
+        query: str,
+        *,
+        limit: int = 5,
+        min_score: float = 60.0,
+        assets_root: str | None = None,
+        github_token: str | None = None,
 ) -> str:
     """Return the first PNG path within the matched directory's 3D subfolder."""
 
@@ -336,15 +335,24 @@ async def get_first_png_in_3d(
     return f"No PNG file found within a 3D subdirectory for matches to '{query}'."
 
 
+def _to_raw_url(path: str) -> str:
+    remote_path = f"{REMOTE_ASSETS_SUBPATH}/{path}" if REMOTE_ASSETS_SUBPATH else path
+    return (
+        "https://raw.githubusercontent.com/"
+        "TranThienTrong/vibe-habit-fluentui-emoji/"
+        f"{REMOTE_BRANCH}/{remote_path}"
+    )
+
+
 @mcp.tool("get_3d_png_asset")
 async def get_3d_png_asset(
-    query: str,
-    *,
-    limit: int = 5,
-    min_score: float = 60.0,
-    github_token: str | None = None,
-) -> bytes:
-    """Return the raw PNG content for the best 3D asset match using cached paths."""
+        query: str,
+        *,
+        limit: int = 5,
+        min_score: float = 60.0,
+        github_token: str | None = None,
+) -> list[str]:
+    """Return raw GitHub URLs for 3D asset matches using cached paths."""
 
     if limit <= 0:
         raise ValueError("'limit' must be a positive integer.")
@@ -382,23 +390,8 @@ async def get_3d_png_asset(
             "No cached 3D PNG paths found for the ranked directories."
         )
 
-    # Build raw GitHub content URL
-    first_path = candidate_pngs[0]
-    remote_path = f"{REMOTE_ASSETS_SUBPATH}/{first_path}" if REMOTE_ASSETS_SUBPATH else first_path
-    raw_url = (
-        "https://raw.githubusercontent.com/"
-        "TranThienTrong/vibe-habit-fluentui-emoji/"
-        f"{REMOTE_BRANCH}/{remote_path}"
-    )
+    return [_to_raw_url(path) for path in candidate_pngs]
 
-    try:
-        return await asyncio.to_thread(_fetch_github_blob, raw_url, github_token)
-    except Exception as exc:  # noqa: BLE001 - propagate with context
-        logger.exception("Unable to download PNG asset from GitHub")
-        raise RuntimeError("Failed to download PNG asset") from exc
-
-if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
 
 # if __name__ == "__main__":
 #     # Parse command line arguments

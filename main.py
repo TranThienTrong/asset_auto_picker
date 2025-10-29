@@ -348,7 +348,7 @@ def _to_raw_url(path: str) -> str:
 async def get_3d_png_asset(
         query: str,
         *,
-        limit: int = 5,
+        limit: int = 99999,
         min_score: float = 60.0,
         github_token: str | None = None,
 ) -> list[str]:

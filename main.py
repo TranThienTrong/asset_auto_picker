@@ -344,13 +344,16 @@ def _to_raw_url(path: str) -> str:
     )
 
 
+COMBINED_KEY = "__combined__"
+
+
 @mcp.tool("get_3d_png_asset")
 async def get_3d_png_asset(
         keywords: list[str],
         *,
         min_score: float = 60.0,
 ) -> dict[str, list[str]]:
-    """Return raw GitHub URLs per keyword for 3D asset matches using cached paths."""
+    """Return raw GitHub URLs per keyword with an aggregate combined list."""
 
     if not keywords:
         raise ValueError("'keywords' must contain at least one term.")
@@ -373,6 +376,8 @@ async def get_3d_png_asset(
         raise RuntimeError("Failed to load cached 3D PNG paths") from exc
 
     keyword_to_urls: dict[str, list[str]] = {}
+    combined_urls: list[str] = []
+    seen_urls: set[str] = set()
 
     for keyword in normalized_keywords:
         matches = _rank_directories(
@@ -392,7 +397,15 @@ async def get_3d_png_asset(
             directories=candidate_dirs,
         )
 
-        keyword_to_urls[keyword] = [_to_raw_url(path) for path in candidate_pngs]
+        urls = [_to_raw_url(path) for path in candidate_pngs]
+        keyword_to_urls[keyword] = urls
+
+        for url in urls:
+            if url not in seen_urls:
+                seen_urls.add(url)
+                combined_urls.append(url)
+
+    keyword_to_urls[COMBINED_KEY] = combined_urls
 
     return keyword_to_urls
 

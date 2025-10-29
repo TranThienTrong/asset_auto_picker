@@ -346,16 +346,19 @@ def _to_raw_url(path: str) -> str:
 
 @mcp.tool("get_3d_png_asset")
 async def get_3d_png_asset(
-        query: str,
+        keywords: list[str],
         *,
-        limit: int = 99999,
         min_score: float = 60.0,
-        github_token: str | None = None,
-) -> list[str]:
-    """Return raw GitHub URLs for 3D asset matches using cached paths."""
+) -> dict[str, list[str]]:
+    """Return raw GitHub URLs per keyword for 3D asset matches using cached paths."""
 
-    if limit <= 0:
-        raise ValueError("'limit' must be a positive integer.")
+    if not keywords:
+        raise ValueError("'keywords' must contain at least one term.")
+
+    normalized_keywords = [keyword.strip() for keyword in keywords if keyword.strip()]
+
+    if not normalized_keywords:
+        raise ValueError("'keywords' must contain at least one non-empty term.")
 
     try:
         directories = await asyncio.to_thread(_load_cached_directories)
@@ -363,34 +366,35 @@ async def get_3d_png_asset(
         logger.exception("Unable to load cached directories")
         raise RuntimeError("Failed to load cached directories") from exc
 
-    matches = _rank_directories(
-        query,
-        directories,
-        limit=limit,
-        min_score=min_score,
-    )
-
-    if not matches:
-        raise RuntimeError(f"No directories matching '{query}' were found.")
-
     try:
         cached_pngs = await asyncio.to_thread(_load_cached_3d_pngs)
     except Exception as exc:  # noqa: BLE001 - propagate with context
         logger.exception("Unable to load cached 3D PNG paths")
         raise RuntimeError("Failed to load cached 3D PNG paths") from exc
 
-    candidate_dirs = [match.directory for match in matches]
-    candidate_pngs = _filter_cached_pngs_by_directories(
-        cached_paths=cached_pngs,
-        directories=candidate_dirs,
-    )
+    keyword_to_urls: dict[str, list[str]] = {}
 
-    if not candidate_pngs:
-        raise RuntimeError(
-            "No cached 3D PNG paths found for the ranked directories."
+    for keyword in normalized_keywords:
+        matches = _rank_directories(
+            keyword,
+            directories,
+            limit=99999,
+            min_score=min_score,
         )
 
-    return [_to_raw_url(path) for path in candidate_pngs]
+        if not matches:
+            keyword_to_urls[keyword] = []
+            continue
+
+        candidate_dirs = [match.directory for match in matches]
+        candidate_pngs = _filter_cached_pngs_by_directories(
+            cached_paths=cached_pngs,
+            directories=candidate_dirs,
+        )
+
+        keyword_to_urls[keyword] = [_to_raw_url(path) for path in candidate_pngs]
+
+    return keyword_to_urls
 
 
 # if __name__ == "__main__":

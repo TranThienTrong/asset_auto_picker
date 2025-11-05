@@ -27,4 +27,4 @@ RUN uv sync --frozen
 COPY . .
 
 # Command to run the uvicorn server
-CMD ["sh", "-c", "uv run fastmcp run main.py:mcp --transport http --host 0.0.0.0 --port $PORT"]
+CMD ["sh", "-c", "uv run fastmcp run emoji_agent.py:mcp --transport http --host 0.0.0.0 --port $PORT"]

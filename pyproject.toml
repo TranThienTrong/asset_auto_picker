@@ -15,7 +15,13 @@ dependencies = [
     "httpx>=0.28.1",
     "mcp>=1.19.0",
     "rapidfuzz>=3.14.1",
+    "numpy>=1.26.0",
+    "sentence-transformers>=2.2.2",
+    "qdrant-client>=1.10.0",
+    "python-dotenv>=1.0.1",
+    "openai>=1.40.0",
     "twine>=6.2.0",
+    "openai-agents==0.4.2",
 ]
 keywords = [
   "mcp",

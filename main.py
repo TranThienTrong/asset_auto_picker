@@ -1,4 +1,6 @@
 import argparse
+import functools
+import math
 import os
 from typing import Any
 
@@ -12,9 +14,10 @@ from typing import Any, Iterable
 import logging
 import urllib.request
 
+import numpy as np
 import uvicorn
 from fastmcp import FastMCP
-from rapidfuzz import fuzz
+from sentence_transformers import SentenceTransformer
 from asset_traversal_service import AssetTraversalService
 
 logger = logging.getLogger(__name__)
@@ -28,7 +31,7 @@ REMOTE_BRANCH = "main"
 REMOTE_ASSETS_SUBPATH = "assets"
 
 # Local cache of directory names
-CACHED_DIRECTORIES_PATH = Path(__file__).resolve().parent / "cached_file_name.json"
+CACHED_DIRECTORIES_PATH = Path(__file__).resolve().parent / "cached_file_name_short.json"
 CACHED_3D_PNG_PATH = Path(__file__).resolve().parent / "cached_3d_png_paths.json"
 
 
@@ -38,29 +41,30 @@ class Match:
     score: float
 
 
-def _normalize_component(component: str) -> str:
-    """Return a normalized version of a directory component for scoring."""
+@functools.lru_cache(maxsize=1)
+def _load_embedding_model() -> SentenceTransformer:
+    return SentenceTransformer("all-MiniLM-L6-v2")
 
-    return component.replace("_", " ").replace("-", " ")
+
+@functools.lru_cache(maxsize=1)
+def _load_directory_embeddings() -> dict[str, np.ndarray]:
+    directories = _load_cached_directories()
+    if not directories:
+        return {}
+
+    model = _load_embedding_model()
+    embeddings = model.encode(directories, convert_to_numpy=True, normalize_embeddings=True)
+    return {directory: embedding for directory, embedding in zip(directories, embeddings)}
 
 
-def _score_directory(query: str, directory: str) -> float:
-    """Compute a similarity score between the query and a directory path."""
+def _encode_query(query: str) -> np.ndarray:
+    model = _load_embedding_model()
+    embedding = model.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
+    return embedding
 
-    components: list[str] = directory.split("/")
-    base = components[-1]
-    normalized_base = _normalize_component(base)
-    normalized_path = _normalize_component(directory)
 
-    scores = (
-        fuzz.WRatio(query, base),
-        fuzz.partial_ratio(query, base),
-        fuzz.WRatio(query, normalized_base),
-        fuzz.token_set_ratio(query, normalized_base),
-        fuzz.WRatio(query, normalized_path),
-    )
-
-    return max(scores)
+def _semantic_similarity(query_embedding: np.ndarray, directory_embedding: np.ndarray) -> float:
+    return float(np.dot(query_embedding, directory_embedding))
 
 
 def _load_cached_directories() -> list[str]:
@@ -108,10 +112,15 @@ def _rank_directories(
 ) -> list[Match]:
     """Return ranked directory matches filtered by score threshold."""
 
-    scored = [
-        Match(directory=directory, score=_score_directory(query, directory))
-        for directory in directories
-    ]
+    query_embedding = _encode_query(query)
+
+    directory_embeddings = _load_directory_embeddings()
+
+    scored = []
+    for directory in directories:
+        embedding = directory_embeddings[directory]
+        score = _semantic_similarity(query_embedding, embedding) * 100
+        scored.append(Match(directory=directory, score=score))
 
     filtered = [match for match in scored if match.score >= min_score]
     filtered.sort(key=lambda match: match.score, reverse=True)
@@ -275,64 +284,6 @@ async def find_directory(
     return "\n".join(formatted)
 
 
-async def get_first_png_in_3d(
-        query: str,
-        *,
-        limit: int = 5,
-        min_score: float = 60.0,
-        assets_root: str | None = None,
-        github_token: str | None = None,
-) -> str:
-    """Return the first PNG path within the matched directory's 3D subfolder."""
-
-    if limit <= 0:
-        raise ValueError("'limit' must be a positive integer.")
-
-    try:
-        if assets_root is not None:
-            service = AssetTraversalService(assets_root=assets_root)
-            remote_tree: list[dict[str, str]] | None = None
-        else:
-            service = AssetTraversalService(
-                remote_repo_url=REMOTE_REPO_URL,
-                branch=REMOTE_BRANCH,
-                github_token=github_token,
-                assets_subpath=REMOTE_ASSETS_SUBPATH,
-            )
-            remote_tree = await asyncio.to_thread(service._fetch_remote_tree)
-
-        directories = await _gather_directories(service)
-    except Exception as exc:  # noqa: BLE001 - propagate with context
-        logger.exception("Unable to prepare directory search")
-        raise RuntimeError("Failed to search for assets") from exc
-
-    matches = _rank_directories(
-        query,
-        directories,
-        limit=limit,
-        min_score=min_score,
-    )
-
-    if not matches:
-        return f"No directories matching '{query}' were found."
-
-    if assets_root is not None:
-        for match in matches:
-            png_path = await asyncio.to_thread(_find_first_png_local, service, match.directory)
-            if png_path is not None:
-                return png_path
-    else:
-        assert remote_tree is not None  # Narrowing for type checkers
-        for match in matches:
-            png_path = _find_first_png_remote(
-                match.directory,
-                remote_tree,
-                REMOTE_ASSETS_SUBPATH,
-            )
-            if png_path is not None:
-                return png_path
-
-    return f"No PNG file found within a 3D subdirectory for matches to '{query}'."
 
 
 def _to_raw_url(path: str) -> str:
@@ -344,30 +295,30 @@ def _to_raw_url(path: str) -> str:
     )
 
 
-COMBINED_KEY = "__combined__"
-
-
 @mcp.tool("get_3d_png_asset")
 async def get_3d_png_asset(
-        keywords: list[str],
+        query: str,
         *,
-        min_score: float = 60.0,
-) -> dict[str, list[str]]:
-    """Return raw GitHub URLs per keyword with an aggregate combined list."""
+        limit: int = 99999,
+        min_score: float = 70.0,
 
-    if not keywords:
-        raise ValueError("'keywords' must contain at least one term.")
+) -> list[str]:
+    """Return raw GitHub URLs for 3D assets matching the query."""
 
-    normalized_keywords = [keyword.strip() for keyword in keywords if keyword.strip()]
+    normalized_query = query.strip()
 
-    if not normalized_keywords:
-        raise ValueError("'keywords' must contain at least one non-empty term.")
+    if not normalized_query:
+        raise ValueError("'query' must be a non-empty string.")
 
-    try:
-        directories = await asyncio.to_thread(_load_cached_directories)
-    except Exception as exc:  # noqa: BLE001 - propagate with context
-        logger.exception("Unable to load cached directories")
-        raise RuntimeError("Failed to load cached directories") from exc
+    if limit <= 0:
+        raise ValueError("'limit' must be a positive integer.")
+
+    directory_embeddings = _load_directory_embeddings()
+
+    directories = list(directory_embeddings.keys())
+
+    if not directories:
+        return []
 
     try:
         cached_pngs = await asyncio.to_thread(_load_cached_3d_pngs)
@@ -375,39 +326,35 @@ async def get_3d_png_asset(
         logger.exception("Unable to load cached 3D PNG paths")
         raise RuntimeError("Failed to load cached 3D PNG paths") from exc
 
-    keyword_to_urls: dict[str, list[str]] = {}
-    combined_urls: list[str] = []
-    seen_urls: set[str] = set()
+    matches = _rank_directories(
+        normalized_query,
+        directories,
+        limit=limit,
+        min_score=min_score,
+    )
 
-    for keyword in normalized_keywords:
-        matches = _rank_directories(
-            keyword,
-            directories,
-            limit=99999,
-            min_score=min_score,
-        )
+    if not matches:
+        return []
 
-        if not matches:
-            keyword_to_urls[keyword] = []
-            continue
+    candidate_dirs = [match.directory for match in matches]
+    candidate_pngs = _filter_cached_pngs_by_directories(
+        cached_paths=cached_pngs,
+        directories=candidate_dirs,
+    )
 
-        candidate_dirs = [match.directory for match in matches]
-        candidate_pngs = _filter_cached_pngs_by_directories(
-            cached_paths=cached_pngs,
-            directories=candidate_dirs,
-        )
+    if not candidate_pngs:
+        return []
 
-        urls = [_to_raw_url(path) for path in candidate_pngs]
-        keyword_to_urls[keyword] = urls
+    seen: set[str] = set()
+    urls: list[str] = []
 
-        for url in urls:
-            if url not in seen_urls:
-                seen_urls.add(url)
-                combined_urls.append(url)
+    for path in candidate_pngs:
+        url = _to_raw_url(path)
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
 
-    keyword_to_urls[COMBINED_KEY] = combined_urls
-
-    return keyword_to_urls
+    return urls
 
 
 # if __name__ == "__main__":
@@ -441,4 +388,7 @@ if __name__ == "__main__":
     # - host="0.0.0.0": Accepts connections from any IP (needed for remote deployment)
     # - port: The port to listen on
     # - log_level="debug": Enables detailed logging for development
+    logger.info(f"Embedding Directories")
+    _load_directory_embeddings()
+    logger.info(f"Running MCP Server")
     mcp.run(transport="streamable-http", host="0.0.0.0", port=port, log_level="debug")

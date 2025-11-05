@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from agents import Agent, ModelSettings, Runner, function_tool
 from fastmcp import FastMCP
 from openai import OpenAI
+from openai.types import Reasoning, ReasoningEffort
 from qdrant_client import QdrantClient
 
 from main import _encode_query
@@ -21,17 +22,18 @@ from model.emoji_asset import EmojiAssetMatch
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.getenv("EMOJI_AGENT_MODEL", "gpt-4o-mini")
+DEFAULT_MODEL = os.getenv("EMOJI_AGENT_MODEL", "gpt-5-mini")
 DEFAULT_COLLECTION = os.getenv("EMOJI_QDRANT_COLLECTION", "emoji_asset_directories")
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not OPENAI_API_KEY:
     logger.critical("❌ OpenAI API key not found. Make sure it's in your .env file. Shutting down.")
     exit(1)
-RERANK_MODEL = os.getenv("OPENAI_RERANK_MODEL", "gpt-4o-mini")
-DEFAULT_TOP_K = 5
+RERANK_MODEL = os.getenv("OPENAI_RERANK_MODEL", "gpt-5-mini")
+DEFAULT_TOP_K = 1
 
 _openai_client = OpenAI()
 mcp = FastMCP("assetAutoPicker", stateless_http=True)
+
 
 def _build_qdrant_client(timeout: float = 60.0) -> QdrantClient:
     url = os.getenv("QDRANT_URL")
@@ -43,9 +45,15 @@ def _build_qdrant_client(timeout: float = 60.0) -> QdrantClient:
 
 
 def _format_results(points: Iterable) -> str:
+    ordered_points = sorted(
+        points,
+        key=lambda point: getattr(point, "score", 0.0),
+        reverse=True,
+    )
+
     matches: list[EmojiAssetMatch] = []
 
-    for point in points:
+    for point in ordered_points:
         payload = point.payload or {}
         directory = payload.get("directory")
         if isinstance(directory, str) and directory:
@@ -83,8 +91,11 @@ def search_emoji_directories(query: str, limit: int | None = None) -> str:
         limit=top_k,
     )
 
-    reranked = _rerank_points(points, query=normalized_query, top_k=top_k)
+    print(points)
 
+    reranked = list(points)
+
+    print(reranked)
     logger.info(
         "search_emoji_directories | query='%s' | collection='%s' | limit=%s | results=%s",
         normalized_query,
@@ -166,32 +177,36 @@ def _rerank_points(points: Iterable, *, query: str, top_k: int) -> list:
             if len(reordered) >= len(original_points):
                 break
 
-    print("After Reorder: "+repr(reordered))
+    print("After Reorder: " + repr(reordered))
     return reordered
 
 
 emoji_agent = Agent(
     name="EmojiDirectoryAssistant",
     instructions=(
-        "You help users find emoji asset directories stored in Qdrant."
-        " When a user requests emoji assets, call the `search_emoji_directories`"
-        " tool to retrieve the most relevant directories"
-        " clearly. Include scores only when helpful."
+        f"""
+        You help users find emoji asset directories stored in Qdrant.
+        Analyze the input sentences to identify the most relevant keywords, 
+        then use those keywords to query the `search_emoji_directories` tool to retrieve the most relevant directories.
+        """
     ),
     model=DEFAULT_MODEL,
-    model_settings=ModelSettings(temperature=0.6),
+    model_settings=ModelSettings(
+        reasoning=Reasoning(effort="medium"),
+    ),
     tools=[search_emoji_directories],
 )
 
-@mcp.tool("find_emoji")
+#
+# @mcp.tool("find_emoji")
 async def run_emoji_agent(
         query: str,
         *,
         limit: int = DEFAULT_TOP_K,
-        max_attempts: int = 3,
+        max_attempts: int = 1,
         initial_retry_delay: float = 2.0,
 ) -> str:
-    prompt = (
+    input = (
         f"Find emoji asset directories for the query: '{query}'."
         f" Return at most {limit} results."
     )
@@ -201,12 +216,8 @@ async def run_emoji_agent(
     for attempt in range(1, max_attempts + 1):
         try:
             result = await Runner.run(
-                emoji_agent,
-                prompt,
-                context=(
-                    "Always invoke search_emoji_directories with the provided query."
-                    f" Use limit={limit}."
-                ),
+                starting_agent=emoji_agent,
+                input=input,
             )
 
             return result.final_output.strip()
@@ -256,7 +267,7 @@ async def _main_async() -> None:
     if args.model:
         emoji_agent.model = args.model
 
-    output = await run_emoji_agent("Saying hello", limit=args.limit)
+    output = await run_emoji_agent("Hungry", limit=3)
     print(output)
 
 
@@ -267,6 +278,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     # Get port from environment variable (used by deployment platforms like DigitalOcean)
+    #main()
     port = int(os.environ.get("PORT", 8080))
 
     # Start the MCP server with HTTP transport
@@ -277,4 +289,3 @@ if __name__ == "__main__":
 
     logger.info(f"Running MCP Server")
     mcp.run(transport="streamable-http", host="0.0.0.0", port=port, log_level="debug")
-

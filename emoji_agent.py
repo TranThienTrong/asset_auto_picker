@@ -198,7 +198,7 @@ emoji_agent = Agent(
 )
 
 #
-# @mcp.tool("find_emoji")
+@mcp.tool("find_emoji")
 async def run_emoji_agent(
         query: str,
         *,

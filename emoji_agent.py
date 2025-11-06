@@ -1,8 +1,7 @@
-"""OpenAI Agents SDK workflow for querying the emoji Qdrant collection."""
+"""FastAPI service exposing emoji directory search backed by Qdrant and OpenAI."""
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import json
 import logging
@@ -10,8 +9,10 @@ import os
 from typing import Iterable
 
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
 from agents import Agent, ModelSettings, Runner, function_tool
-from fastmcp import FastMCP
 from openai import OpenAI
 from openai.types import Reasoning, ReasoningEffort
 from qdrant_client import QdrantClient
@@ -32,7 +33,7 @@ RERANK_MODEL = os.getenv("OPENAI_RERANK_MODEL", "gpt-5-mini")
 DEFAULT_TOP_K = 1
 
 _openai_client = OpenAI()
-mcp = FastMCP("assetAutoPicker", stateless_http=True)
+app = FastAPI(title="Emoji Agent API", version="1.0.0")
 
 
 def _build_qdrant_client(timeout: float = 60.0) -> QdrantClient:
@@ -91,11 +92,7 @@ def search_emoji_directories(query: str, limit: int | None = None) -> str:
         limit=top_k,
     )
 
-    print(points)
-
     reranked = list(points)
-
-    print(reranked)
     logger.info(
         "search_emoji_directories | query='%s' | collection='%s' | limit=%s | results=%s",
         normalized_query,
@@ -177,7 +174,6 @@ def _rerank_points(points: Iterable, *, query: str, top_k: int) -> list:
             if len(reordered) >= len(original_points):
                 break
 
-    print("After Reorder: " + repr(reordered))
     return reordered
 
 
@@ -197,8 +193,7 @@ emoji_agent = Agent(
     tools=[search_emoji_directories],
 )
 
-#
-@mcp.tool("find_emoji")
+
 async def run_emoji_agent(
         query: str,
         *,
@@ -206,7 +201,7 @@ async def run_emoji_agent(
         max_attempts: int = 1,
         initial_retry_delay: float = 2.0,
 ) -> str:
-    input = (
+    prompt = (
         f"Find emoji asset directories for the query: '{query}'."
         f" Return at most {limit} results."
     )
@@ -217,7 +212,7 @@ async def run_emoji_agent(
         try:
             result = await Runner.run(
                 starting_agent=emoji_agent,
-                input=input,
+                input=prompt,
             )
 
             return result.final_output.strip()
@@ -243,49 +238,44 @@ async def run_emoji_agent(
     raise last_error
 
 
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Query the emoji directory agent via the OpenAI Agents SDK.",
+class EmojiSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, description="Natural language emoji description")
+    limit: int | None = Field(None, ge=1, le=50, description="Maximum number of results to return")
+
+
+class EmojiSearchResponse(BaseModel):
+    query: str
+    limit: int
+    results: list[str]
+    agent_output: str | None = Field(
+        default=None,
+        description="Raw agent response when available",
     )
-    parser.add_argument("--query", help="User said they won a prize")
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=DEFAULT_TOP_K,
-        help="Maximum number of results to retrieve (default: 10).",
+
+
+@app.post("/search", response_model=EmojiSearchResponse)
+async def search_emoji(request: EmojiSearchRequest) -> EmojiSearchResponse:
+    """Entry point for querying the emoji agent via HTTP."""
+
+    limit = _resolve_limit(request.limit)
+
+    try:
+        agent_output = await run_emoji_agent(request.query, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Agent run failed for query '%s'", request.query)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    try:
+        results = json.loads(agent_output)
+        if not isinstance(results, list):
+            raise ValueError("Agent output is not a list")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Failed to parse agent output as JSON: %s", exc)
+        results = [agent_output]
+
+    return EmojiSearchResponse(
+        query=request.query,
+        limit=limit,
+        results=results,
+        agent_output=None if results == [agent_output] else agent_output,
     )
-    parser.add_argument(
-        "--model",
-        help="Optional override for the OpenAI model used by the agent.",
-    )
-    return parser.parse_args()
-
-
-async def _main_async() -> None:
-    args = _parse_args()
-
-    if args.model:
-        emoji_agent.model = args.model
-
-    output = await run_emoji_agent("Hungry", limit=3)
-    print(output)
-
-
-def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(_main_async())
-
-
-if __name__ == "__main__":
-    # Get port from environment variable (used by deployment platforms like DigitalOcean)
-    #main()
-    port = int(os.environ.get("PORT", 8080))
-
-    # Start the MCP server with HTTP transport
-    # - transport="streamable-http": Uses HTTP for communication with MCP clients
-    # - host="0.0.0.0": Accepts connections from any IP (needed for remote deployment)
-    # - port: The port to listen on
-    # - log_level="debug": Enables detailed logging for development
-
-    logger.info(f"Running MCP Server")
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=port, log_level="debug")

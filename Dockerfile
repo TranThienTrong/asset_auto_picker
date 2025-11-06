@@ -29,4 +29,4 @@ COPY . .
 # Command to run the uvicorn server
 #CMD ["sh", "-c", "uv run fastmcp run emoji_agent.py:mcp --transport http --host 0.0.0.0 --port $PORT"]
 
-CMD ["run", "uvicorn", "emoji_agent:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+CMD ["uvicorn", "emoji_agent:app", "--host", "0.0.0.0", "--port", "8080", "--reload", "--worker" , "1"]

@@ -1,32 +1,37 @@
-# Use the official Python image with uv pre-installed
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM python:3.11-slim-bullseye AS release
 
-# Install system dependencies including PostgreSQL client libraries
-RUN apt-get update && \
-    apt-get install -y \
-        libpq-dev \
-        && \
-    rm -rf /var/lib/apt/lists/*
+ENV WORKSPACE_ROOT=/app/
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Set the working directory
-WORKDIR /app
+# Install system dependencies
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    python3-dev \
+    libglib2.0-dev \
+    libnss3-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set environment variables
-ENV UV_SYSTEM_PYTHON=1
-ENV PATH="/root/.local/bin:$PATH"
-ENV PYTHONPATH="/app"
-ENV PORT=8080
+# Install uv for dependency management
+RUN pip install --no-cache-dir uv
 
-# Copy pyproject.toml and uv.lock* first to leverage Docker cache
-COPY pyproject.toml uv.lock* ./
+WORKDIR $WORKSPACE_ROOT
+
+# Copy requirements file
+COPY requirements.txt $WORKSPACE_ROOT
 
 # Install dependencies using uv
-RUN uv sync --frozen
+RUN uv pip install --system -r requirements.txt
 
-# Copy the application code
-COPY . .
+# Copy the rest of the code
+COPY . $WORKSPACE_ROOT
 
-# Command to run the uvicorn server
-#CMD ["sh", "-c", "uv run fastmcp run emoji_agent.py:mcp --transport http --host 0.0.0.0 --port $PORT"]
+# Expose port 8000
+EXPOSE 8000
 
-CMD ["uvicorn", "emoji_agent:app", "--host", "0.0.0.0", "--port", "8080", "--reload", "--worker" , "1"]
+# No CMD - Railway will use startCommand from railway.toml
+CMD ["run", "uvicorn", "emoji_agent:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
